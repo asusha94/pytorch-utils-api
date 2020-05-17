@@ -1,6 +1,6 @@
 
 
-def save_checkpoint(checkpoint_path, *, model, optimizer, learning_rate, iteration, epoch, loss, symlink_name=None):
+def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_name=None):
     import os
     import numpy as np
     import random
@@ -17,9 +17,7 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, learning_rate, iterati
         rng_state=rng_state,
         state_dict=model.state_dict(),
         optimizer=optimizer.state_dict(),
-        iteration=iteration,
-        epoch=epoch,
-        learning_rate=learning_rate,
+        step=step,
         loss=loss
     )
 
@@ -36,7 +34,7 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, learning_rate, iterati
         os.symlink(checkpoint_name, symlink_path)
 
 
-def load_checkpoint(checkpoint_path, *, model, optimizer=None):
+def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False):
     import os
     import numpy as np
     import random
@@ -53,16 +51,14 @@ def load_checkpoint(checkpoint_path, *, model, optimizer=None):
     torch.set_rng_state(rng_state['torch'])
     torch.cuda.set_rng_state(rng_state['torch_cuda'])
 
-    model.load_state_dict(checkpoint_dict['state_dict'])
+    model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
     if optimizer is not None:
-        optimizer.load_state_dict(checkpoint_dict['optimizer'])
+        optimizer.load_state_dict(checkpoint_dict['optimizer'], strict=strict)
 
-    learning_rate = checkpoint_dict['learning_rate']
-    iteration = checkpoint_dict['iteration']
-    epoch = checkpoint_dict['epoch']
+    step = checkpoint_dict['step']
     loss = checkpoint_dict['loss']
 
-    return learning_rate, iteration, epoch, loss
+    return step, loss
 
 
 class _TrainStep:
@@ -81,6 +77,20 @@ class _TrainStep:
 
 
 def _default_summary_write(writer, model, optimizer, metrics, step, batch, result):
+    from . import summary as summary_utils
+
+    summary_utils.write_gradients(writer, model, step)
+
+    n_groups = len(optimizer.param_groups)
+    for i, group in optimizer.param_groups:
+        for k, v in group.items():
+            if n_groups == 1:
+                label = f'optimizer/{k}'
+            else:
+                label = f'optimizer/{i}/{k}'
+
+            writer.add_scalar(label, v, global_step=step)
+
     for k, v in metrics.items():
         try:
             writer.add_scalar(k, v, global_step=step)
@@ -92,7 +102,7 @@ def train(*, epochs, model, optimizer, step_func,
           train_dataset, val_dataset=None,
           training_dir=None, checkpoint_path=None,
           calc_metrics=None, summary_write=None,
-          device=None, param_ops=None):
+          device=None, params_ops=None):
     import os
     import time
     import torch
@@ -179,9 +189,7 @@ def train(*, epochs, model, optimizer, step_func,
                 save_checkpoint(checkpoint_path,
                                 model=model,
                                 optimizer=optimizer,
-                                learning_rate=optimizer.param_groups[0]['lr'],
-                                iteration=0,
-                                epoch=0,
+                                step=0,
                                 loss=loss,
                                 symlink_name='checkpoint_last.pth')
     else:
@@ -210,8 +218,8 @@ def train(*, epochs, model, optimizer, step_func,
 
                 loss.backward()
 
-                if param_ops:
-                    for op in param_ops:
+                if params_ops:
+                    for op in params_ops:
                         op(model.parameters())
 
                 return loss
@@ -240,10 +248,9 @@ def train(*, epochs, model, optimizer, step_func,
             save_checkpoint(checkpoint_path,
                             model=model,
                             optimizer=optimizer,
-                            learning_rate=optimizer.param_groups[0]['lr'],
-                            iteration=step,
-                            epoch=epoch,
-                            loss=running_metrics['loss'])
+                            step=epoch,
+                            loss=loss,
+                            symlink_name='checkpoint_last.pth')
 
             if valid_writer is not None:
                 # valid metrics
