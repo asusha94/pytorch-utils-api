@@ -111,8 +111,8 @@ def train(*, epochs, model, optimizer, step_func,
     from . import eval as eval_utils
     from . import model as model_utils
 
-    if not isinstance(step_func, model.ForwardStepWrapper):
-        step_func = model.ForwardStepWrapper(step_func)
+    if not isinstance(step_func, model_utils.ForwardStepWrapper):
+        step_func = model_utils.ForwardStepWrapper(step_func)
 
     if device is None:
         device = next(model.parameters()).device
