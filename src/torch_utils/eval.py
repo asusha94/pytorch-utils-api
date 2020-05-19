@@ -1,5 +1,4 @@
 
-
 def metrics_ema(running_metrics, metrics, a=0.1, step=1):
     for k, v in metrics.items():
         if k not in running_metrics:
@@ -59,7 +58,7 @@ def evaluate(model, dataset, *, step_func, calc_metrics=None, ret_last_batch=Fal
     if device is None:
         device = next(model.parameters()).device
 
-    with model.evaluating(model):
+    with model_utils.evaluating(model):
         with torch.no_grad():
             i = 1
             running_metrics = dict()
