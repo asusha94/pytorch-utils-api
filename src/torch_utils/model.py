@@ -1,4 +1,5 @@
 import collections
+import torch
 from contextlib import contextmanager
 
 
@@ -19,6 +20,35 @@ ForwardResult = collections.namedtuple('ForwardResult', [
     'targets',
     'loss'
 ], defaults=[None, None])
+
+
+class _CalcMetricsWrapper:
+    def __init__(self, func):
+        assert callable(func), 'func: must be callable'
+        self._func = func
+
+    def __call__(self, *args, **kwargs):
+        metrics = self._func(*args, **kwargs)
+        return self._normalize(metrics)
+
+    @staticmethod
+    def _normalize(metrics):
+        def normalize_item(item):
+            if isinstance(item, dict):
+                return {k: normalize_item(v) for k, v in item.items()}
+            elif isinstance(item, list):
+                return [normalize_item(v) for v in item]
+            elif isinstance(item, collections.abc.Iterable):
+                return tuple(normalize_item(v) for v in item)
+            elif isinstance(item, torch.Tensor):
+                if len(torch.squeeze(item).shape):
+                    return item.detach()
+                else:
+                    return torch.squeeze(item).item()
+            else:
+                return item
+
+        return normalize_item(metrics)
 
 
 class _ForwardStepWrapper:

@@ -98,6 +98,10 @@ def _default_summary_write(writer, model, optimizer, metrics, step, batch, resul
             pass
 
 
+def _default_calc_metrics(model, batch, result):
+    return dict(loss=result.loss.item())
+
+
 def train(*, epochs, model, optimizer, step_func,
           train_dataset, val_dataset=None,
           training_dir=None, checkpoint_path=None,
@@ -117,6 +121,12 @@ def train(*, epochs, model, optimizer, step_func,
     if device is None:
         device = next(model.parameters()).device
 
+    if calc_metrics is None:
+        calc_metrics = _default_calc_metrics
+
+    if not isinstance(calc_metrics, model_utils._CalcMetricsWrapper):
+        calc_metrics = model_utils._CalcMetricsWrapper(calc_metrics)
+
     if summary_write is None:
         summary_write = _default_summary_write
 
@@ -129,9 +139,9 @@ def train(*, epochs, model, optimizer, step_func,
 
     if checkpoint_path is not None:
         _state = load_checkpoint(checkpoint_path, model=model, optimizer=optimizer)
-        learning_rate, step, epoch_offset, loss = _state
+        epoch_offset, loss = _state
     else:
-        step, epoch_offset, loss = 0, 0, 0
+        epoch_offset, loss = 0, -1
 
     if training_dir is None:
         training_dir = './training'
@@ -154,7 +164,10 @@ def train(*, epochs, model, optimizer, step_func,
 
     print('Training started:', type(model).__name__)
 
-    if epoch_offset == 0:
+    if checkpoint_path is not None:
+        print(f'epoch #{epoch_offset}/{epochs}', f'loss: {loss:.3f}', flush=True)
+    else:
+        # TODO: place into a training loop
         with model_utils.evaluating(model):
             with torch.no_grad():
                 # train metrics
@@ -192,8 +205,6 @@ def train(*, epochs, model, optimizer, step_func,
                                 step=0,
                                 loss=loss,
                                 symlink_name='checkpoint_last.pth')
-    else:
-        print(f'epoch #{epoch_offset}/{epochs}', f'loss: {loss:.3f}', flush=True)
 
     train_step = _TrainStep(step_func)
 
@@ -206,8 +217,6 @@ def train(*, epochs, model, optimizer, step_func,
 
         model.train()
         for epoch_step, batch in enumerate(train_dataset, 1):
-            step += 1
-
             batch = [item.to(device) for item in batch]
 
             def closure():

@@ -20,23 +20,19 @@ def metrics_accumulate(running_metrics, metrics, factor=1.):
             print('Metrics mergin error:', k, repr(ex))
 
 
-def evaluate_batch(model, batch, *, step_func, calc_metrics=None, ret_result=False):
+def evaluate_batch(model, batch, *, step_func, calc_metrics, ret_result=False):
     from . import model as model_utils
 
     if not isinstance(step_func, model_utils._ForwardStepWrapper):
         step_func = model_utils._ForwardStepWrapper(step_func)
 
+    if not isinstance(calc_metrics, model_utils._CalcMetricsWrapper):
+        calc_metrics = model_utils._CalcMetricsWrapper(calc_metrics)
+
     result = step_func(model, batch)
 
-    if calc_metrics is None:
-        if result.loss is None:
-            metrics = dict(loss=-1)
-        else:
-            metrics = dict(loss=result.loss.item())
-    else:
-        metrics = calc_metrics(model, batch, result)
-        if not isinstance(metrics, dict):
-            metrics = dict(value=metrics)
+    metrics = calc_metrics(model, batch, result)
+    assert isinstance(metrics, dict), 'Must be a dictionary'
 
     if ret_result:
         return metrics, result
@@ -48,12 +44,15 @@ def _metrics_mean(running_metrics, steps):
     return {k: (v / steps) for k, v in running_metrics.items()}
 
 
-def evaluate(model, dataset, *, step_func, calc_metrics=None, ret_last_batch=False, device=None):
+def evaluate(model, dataset, *, step_func, calc_metrics, ret_last_batch=False, device=None):
     import torch
     from . import model as model_utils
 
     if not isinstance(step_func, model_utils._ForwardStepWrapper):
         step_func = model_utils._ForwardStepWrapper(step_func)
+
+    if not isinstance(calc_metrics, model_utils._CalcMetricsWrapper):
+        calc_metrics = model_utils._CalcMetricsWrapper(calc_metrics)
 
     if device is None:
         device = next(model.parameters()).device
