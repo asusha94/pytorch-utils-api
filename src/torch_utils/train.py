@@ -82,7 +82,7 @@ def _default_summary_write(writer, model, optimizer, metrics, step, batch, resul
     summary_utils.write_gradients(writer, model, step)
 
     n_groups = len(optimizer.param_groups)
-    for i, group in optimizer.param_groups:
+    for i, group in enumerate(optimizer.param_groups):
         for k, v in group.items():
             if n_groups == 1:
                 label = f'optimizer/{k}'
