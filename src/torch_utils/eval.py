@@ -56,6 +56,8 @@ def evaluate(model, dataset, *, step_func, calc_metrics, ret_last_batch=False, d
 
     if device is None:
         device = next(model.parameters()).device
+    else:
+        model.to(device)
 
     with model_utils.evaluating(model):
         with torch.no_grad():
