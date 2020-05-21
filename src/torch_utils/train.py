@@ -89,7 +89,10 @@ def _default_summary_write(writer, model, optimizer, metrics, step, batch, resul
             else:
                 label = f'optimizer/{i}/{k}'
 
-            writer.add_scalar(label, v, global_step=step)
+            try:
+                writer.add_scalar(label, v, global_step=step)
+            except Exception:
+                pass
 
     for k, v in metrics.items():
         try:
