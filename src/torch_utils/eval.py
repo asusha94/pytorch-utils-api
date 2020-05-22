@@ -9,13 +9,13 @@ def metrics_ema(running_metrics, metrics, a=0.1, step=1):
         running_metrics[k] /= (1 - a**step)
 
 
-def metrics_accumulate(running_metrics, metrics, factor=1.):
+def metrics_accumulate(running_metrics, metrics, factor=1):
     for k, v in metrics.items():
         try:
             if k not in running_metrics:
-                running_metrics[k] = v * factor
+                running_metrics[k] = factor * v
             else:
-                running_metrics[k] += v * factor
+                running_metrics[k] = running_metrics[k] + factor * v
         except Exception as ex:
             print('Metrics mergin error:', k, repr(ex))
 
