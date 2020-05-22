@@ -38,13 +38,13 @@ class _CalcMetricsWrapper:
                 return {k: normalize_item(v) for k, v in item.items()}
             elif isinstance(item, list):
                 return [normalize_item(v) for v in item]
-            elif isinstance(item, collections.abc.Iterable):
-                return tuple(normalize_item(v) for v in item)
             elif isinstance(item, torch.Tensor):
                 if len(torch.squeeze(item).shape):
                     return item.detach()
                 else:
                     return torch.squeeze(item).item()
+            elif isinstance(item, collections.abc.Iterable):
+                return tuple(normalize_item(v) for v in item)
             else:
                 return item
 
