@@ -15,11 +15,11 @@ def evaluating(net):
             net.train()
 
 
-ForwardResult = collections.namedtuple('ForwardResult', [
-    'outputs',
-    'targets',
-    'loss'
-], defaults=[None, None])
+class ForwardResult:
+    def __init__(self, outputs, targets=None, loss=None):
+        self.outputs = outputs
+        self.targets = targets
+        self.loss = loss
 
 
 class _CalcMetricsWrapper:
