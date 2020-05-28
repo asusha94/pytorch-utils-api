@@ -1,6 +1,6 @@
 
 
-def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_name=None):
+def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_name=None, amp=None):
     import os
     import numpy as np
     import random
@@ -21,6 +21,9 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_na
         loss=loss
     )
 
+    if amp is not None:
+        checkpoint_dict['amp'] = amp.state_dict()
+
     torch.save(checkpoint_dict, checkpoint_path)
 
     if symlink_name is not None:
@@ -34,7 +37,7 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_na
         os.symlink(checkpoint_name, symlink_path)
 
 
-def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False):
+def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False, amp=None):
     import os
     import numpy as np
     import random
@@ -54,6 +57,9 @@ def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False):
     model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint_dict['optimizer'], strict=strict)
+
+    if amp is not None and 'amp' in checkpoint_dict:
+        amp.load_state_dict(checkpoint_dict['amp'])
 
     step = checkpoint_dict['step']
     loss = checkpoint_dict['loss']
@@ -110,7 +116,8 @@ def train(*, epochs, model, optimizer, step_func,
           training_dir=None, checkpoint_path=None,
           calc_metrics=None, summary_write=None,
           device=None, params_ops=None,
-          epoch_per_summary=1, epoch_per_checkpoint=1):
+          epoch_per_summary=1, epoch_per_checkpoint=1,
+          amp=None):
     import os
     import time
     import torch
@@ -142,7 +149,7 @@ def train(*, epochs, model, optimizer, step_func,
     # load checkpoint
 
     if checkpoint_path is not None:
-        _state = load_checkpoint(checkpoint_path, model=model, optimizer=optimizer)
+        _state = load_checkpoint(checkpoint_path, model=model, optimizer=optimizer, amp=amp)
         epoch_offset, loss = _state
     else:
         epoch_offset, loss = 0, -1
@@ -208,7 +215,8 @@ def train(*, epochs, model, optimizer, step_func,
                                 optimizer=optimizer,
                                 step=0,
                                 loss=loss,
-                                symlink_name='checkpoint_last.pth')
+                                symlink_name='checkpoint_last.pth',
+                                amp=amp)
 
     train_step = _TrainStep(step_func)
 
@@ -229,11 +237,16 @@ def train(*, epochs, model, optimizer, step_func,
 
                 loss = train_step(model, batch)
 
-                loss.backward()
+                if amp is not None:
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
 
                 if params_ops:
                     for op in params_ops:
-                        op(model.parameters())
+                        parameters = model.parameters() if amp is None else amp.master_params(optimizer)
+                        op(parameters)
 
                 return loss
 
