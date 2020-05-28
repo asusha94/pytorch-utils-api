@@ -230,27 +230,23 @@ def train(*, epochs, model, optimizer, step_func,
         model.train()
         for epoch_step, batch in enumerate(train_dataset, 1):
             batch = [item.to(device) for item in batch]
+            # zero the parameter gradients
+            optimizer.zero_grad()
 
-            def closure():
-                # zero the parameter gradients
-                optimizer.zero_grad()
+            loss = train_step(model, batch)
 
-                loss = train_step(model, batch)
+            if amp is not None:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
-                if amp is not None:
-                    with amp.scale_loss(loss, optimizer) as scaled_loss:
-                        scaled_loss.backward()
-                else:
-                    loss.backward()
+            if params_ops:
+                for op in params_ops:
+                    parameters = model.parameters() if amp is None else amp.master_params(optimizer)
+                    op(parameters)
 
-                if params_ops:
-                    for op in params_ops:
-                        parameters = model.parameters() if amp is None else amp.master_params(optimizer)
-                        op(parameters)
-
-                return loss
-
-            optimizer.step(closure)
+            optimizer.step()
 
             metrics = calc_metrics(model, batch, train_step.last_result)
 
