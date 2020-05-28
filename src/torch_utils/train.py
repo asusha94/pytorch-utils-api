@@ -82,7 +82,7 @@ class _TrainStep:
         return self._last_result.loss
 
 
-def _default_summary_write(writer, model, optimizer, metrics, step, batch, result):
+def default_summary_write(writer, model, optimizer, metrics, step, batch, result):
     from . import summary as summary_utils
 
     summary_utils.write_gradients(writer, model, step)
@@ -107,7 +107,7 @@ def _default_summary_write(writer, model, optimizer, metrics, step, batch, resul
             pass
 
 
-def _default_calc_metrics(model, batch, result):
+def default_calc_metrics(model, batch, result):
     return dict(loss=result.loss.item())
 
 
@@ -133,13 +133,13 @@ def train(*, epochs, model, optimizer, step_func,
         device = next(model.parameters()).device
 
     if calc_metrics is None:
-        calc_metrics = _default_calc_metrics
+        calc_metrics = default_calc_metrics
 
     if not isinstance(calc_metrics, model_utils._CalcMetricsWrapper):
         calc_metrics = model_utils._CalcMetricsWrapper(calc_metrics)
 
     if summary_write is None:
-        summary_write = _default_summary_write
+        summary_write = default_summary_write
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
