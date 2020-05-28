@@ -109,7 +109,8 @@ def train(*, epochs, model, optimizer, step_func,
           train_dataset, val_dataset=None,
           training_dir=None, checkpoint_path=None,
           calc_metrics=None, summary_write=None,
-          device=None, params_ops=None):
+          device=None, params_ops=None,
+          epoch_per_summary=1, epoch_per_checkpoint=1):
     import os
     import time
     import torch
@@ -256,15 +257,16 @@ def train(*, epochs, model, optimizer, step_func,
                   f'loss: {loss:.3f}', '--',
                   f'elapsed {elapsed:.3f} sec.', flush=True)
 
-            checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{epoch}.pth')
-            save_checkpoint(checkpoint_path,
-                            model=model,
-                            optimizer=optimizer,
-                            step=epoch,
-                            loss=loss,
-                            symlink_name='checkpoint_last.pth')
+            if epoch % epoch_per_checkpoint == 0:
+                checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{epoch}.pth')
+                save_checkpoint(checkpoint_path,
+                                model=model,
+                                optimizer=optimizer,
+                                step=epoch,
+                                loss=loss,
+                                symlink_name='checkpoint_last.pth')
 
-            if valid_writer is not None:
+            if valid_writer is not None and epoch % epoch_per_summary == 0:
                 # valid metrics
                 metrics, (batch, result) = eval_utils.evaluate(model, val_dataset,
                                                                step_func=step_func,
