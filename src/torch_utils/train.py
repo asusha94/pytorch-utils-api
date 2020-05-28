@@ -116,7 +116,7 @@ def train(*, epochs, model, optimizer, step_func,
           training_dir=None, checkpoint_path=None,
           calc_metrics=None, summary_write=None,
           device=None, params_ops=None,
-          epoch_per_summary=1, epoch_per_checkpoint=1,
+          epochs_per_summary=1, epochs_per_checkpoint=1,
           amp=None):
     import os
     import time
