@@ -269,7 +269,7 @@ def train(*, epochs, model, optimizer, step_func,
                   f'loss: {loss:.3f}', '--',
                   f'elapsed {elapsed:.3f} sec.', flush=True)
 
-            if epoch % epoch_per_checkpoint == 0:
+            if epoch % epochs_per_checkpoint == 0:
                 checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{epoch}.pth')
                 save_checkpoint(checkpoint_path,
                                 model=model,
@@ -278,7 +278,7 @@ def train(*, epochs, model, optimizer, step_func,
                                 loss=loss,
                                 symlink_name='checkpoint_last.pth')
 
-            if valid_writer is not None and epoch % epoch_per_summary == 0:
+            if valid_writer is not None and epoch % epochs_per_summary == 0:
                 # valid metrics
                 metrics, (batch, result) = eval_utils.evaluate(model, val_dataset,
                                                                step_func=step_func,
