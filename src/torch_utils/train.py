@@ -9,9 +9,11 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_na
     rng_state = dict(
         python=random.getstate(),
         numpy=np.random.get_state(),
-        torch=torch.get_rng_state(),
-        torch_cuda=torch.cuda.get_rng_state()
+        torch=torch.get_rng_state()
     )
+
+    if torch.cuda.is_available():
+        rng_state['torch_cuda'] = torch.cuda.get_rng_state()
 
     checkpoint_dict = dict(
         rng_state=rng_state,
@@ -52,7 +54,8 @@ def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False, amp
     random.setstate(rng_state['python'])
     np.random.set_state(rng_state['numpy'])
     torch.set_rng_state(rng_state['torch'])
-    torch.cuda.set_rng_state(rng_state['torch_cuda'])
+    if torch.cuda.is_available() and 'torch_cuda' in rng_state:
+        torch.cuda.set_rng_state(rng_state['torch_cuda'])
 
     model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
     if optimizer is not None:
