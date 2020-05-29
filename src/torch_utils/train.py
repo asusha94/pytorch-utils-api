@@ -59,7 +59,7 @@ def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False, amp
 
     model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
     if optimizer is not None:
-        optimizer.load_state_dict(checkpoint_dict['optimizer'], strict=strict)
+        optimizer.load_state_dict(checkpoint_dict['optimizer'])
 
     if amp is not None and 'amp' in checkpoint_dict:
         amp.load_state_dict(checkpoint_dict['amp'])
