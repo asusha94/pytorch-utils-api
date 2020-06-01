@@ -187,7 +187,7 @@ def train(*, epochs, model, optimizer, step_func,
                            if os.path.isfile(os.path.join(checkpoint_dir, ckpt))]
     if checkpoints_history:
         checkpoints_history = map(lambda x: (checkpoint_regex.match(x), x), checkpoints_history)
-        checkpoints_history = ((m.groups()[0], ckpt) for m, ckpt in checkpoints_history if m)
+        checkpoints_history = ((int(m.groups()[0]), ckpt) for m, ckpt in checkpoints_history if m)
         checkpoints_history = sorted(checkpoints_history, key=lambda x: x[0])
         checkpoints_history = list(map(lambda x: x[1], checkpoints_history))
 
