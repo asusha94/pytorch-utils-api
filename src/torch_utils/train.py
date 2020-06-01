@@ -120,11 +120,15 @@ def train(*, epochs, model, optimizer, step_func,
           calc_metrics=None, summary_write=None,
           device=None, params_ops=None,
           epochs_per_summary=1, epochs_per_checkpoint=1,
-          amp=None):
+          amp=None, checkpoints_limit=None):
     import os
     import time
     import torch
+    import re
     from torch.utils.tensorboard import SummaryWriter
+
+    CHECKPOINT_PATTERN = r'^checkpoint_(\d+).pth$'
+    checkpoint_regex = re.compile(CHECKPOINT_PATTERN)
 
     from . import eval as eval_utils
     from . import model as model_utils
@@ -143,6 +147,9 @@ def train(*, epochs, model, optimizer, step_func,
 
     if summary_write is None:
         summary_write = default_summary_write
+
+    if checkpoints_limit is not None:
+        checkpoints_limit = max(1, checkpoints_limit)
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -164,24 +171,51 @@ def train(*, epochs, model, optimizer, step_func,
         os.makedirs(training_dir)
 
     checkpoint_dir = os.path.join(training_dir, 'ckpts')
+    summary_dir = os.path.join(training_dir, 'summary')
+
+    if checkpoint_path is None:  # starting from 0, so we can delete all checkpoints an summary
+        import shutil
+        if os.path.exists(checkpoint_dir):
+            shutil.rmtree(checkpoint_dir)
+        if os.path.exists(summary_dir):
+            shutil.rmtree(summary_dir)
 
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
 
+    checkpoints_history = [ckpt for ckpt in os.listdir(checkpoint_dir)
+                           if os.path.isfile(os.path.join(checkpoint_dir, ckpt))]
+    if checkpoints_history:
+        checkpoints_history = map(lambda x: (checkpoint_regex.match(x), x), checkpoints_history)
+        checkpoints_history = ((m.groups()[0], ckpt) for m, ckpt in checkpoints_history if m)
+        checkpoints_history = sorted(checkpoints_history, key=lambda x: x[0])
+        checkpoints_history = list(map(lambda x: x[1], checkpoints_history))
+
+    # meeting the limit
+
+    if checkpoints_limit is not None:
+        while len(checkpoints_history) > checkpoints_limit:
+            checkpoint_path = os.path.join(checkpoint_dir, checkpoints_history[0])
+            del checkpoints_history[0]
+            os.remove(checkpoint_path)
+
     # creating summary writers
 
-    train_writer = SummaryWriter(log_dir=os.path.join(training_dir, 'summary', 'train'))
+    if not os.path.exists(summary_dir):
+        os.makedirs(summary_dir)
+
+    train_writer = SummaryWriter(log_dir=os.path.join(summary_dir, 'train'))
     if val_dataset is None:
         valid_writer = None
     else:
-        valid_writer = SummaryWriter(log_dir=os.path.join(training_dir, 'summary', 'valid'))
+        valid_writer = SummaryWriter(log_dir=os.path.join(summary_dir, 'valid'))
 
     print('Training started:', type(model).__name__)
 
     if checkpoint_path is not None:
         print(f'epoch #{epoch_offset}/{epochs}', f'loss: {loss:.3f}', flush=True)
     else:
-        # TODO: place into a training loop
+        # TODO: place into checkpoints_limit training loop
         with model_utils.evaluating(model):
             with torch.no_grad():
                 # train metrics
@@ -212,7 +246,8 @@ def train(*, epochs, model, optimizer, step_func,
                 print(f'epoch #0/{epochs}', f'loss: {loss:.3f}', flush=True)
 
                 # zero checkpoint
-                checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint_0.pth')
+                checkpoints_history.append('checkpoint_0.pth')
+                checkpoint_path = os.path.join(checkpoint_dir, checkpoints_history[-1])
                 save_checkpoint(checkpoint_path,
                                 model=model,
                                 optimizer=optimizer,
@@ -270,7 +305,13 @@ def train(*, epochs, model, optimizer, step_func,
                   f'elapsed {elapsed:.3f} sec.', flush=True)
 
             if epoch % epochs_per_checkpoint == 0:
-                checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{epoch}.pth')
+                checkpoints_history.append(f'checkpoint_{epoch}.pth')
+                if checkpoints_limit is not None and len(checkpoints_history) > checkpoints_limit:
+                    checkpoint_path = os.path.join(checkpoint_dir, checkpoints_history[0])
+                    del checkpoints_history[0]
+                    os.remove(checkpoint_path)
+
+                checkpoint_path = os.path.join(checkpoint_dir, checkpoints_history[-1])
                 save_checkpoint(checkpoint_path,
                                 model=model,
                                 optimizer=optimizer,
