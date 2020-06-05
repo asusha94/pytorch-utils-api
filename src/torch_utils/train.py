@@ -296,14 +296,14 @@ def train(*, epochs, model, optimizer, step_func,
 
             elapsed = time.time() - epoch_timer_start
 
-            # train metrics
-            summary_write(train_writer, model, optimizer, running_metrics, epoch, batch, train_step.last_result)
-            if epoch % epochs_per_summary == 0:
-                train_writer.flush()
-
             print(f'epoch #{epoch}/{epochs}',
                   f'loss: {loss:.3f}', '--',
                   f'elapsed {elapsed:.3f} sec.', flush=True)
+
+            # train metrics
+            if epoch % epochs_per_summary == 0:
+                summary_write(train_writer, model, optimizer, running_metrics, epoch, batch, train_step.last_result)
+                train_writer.flush()
 
             if epoch % epochs_per_checkpoint == 0:
                 checkpoints_history.append(f'checkpoint_{epoch}.pth')
