@@ -298,7 +298,8 @@ def train(*, epochs, model, optimizer, step_func,
 
             # train metrics
             summary_write(train_writer, model, optimizer, running_metrics, epoch, batch, train_step.last_result)
-            train_writer.flush()
+            if epoch % epochs_per_summary == 0:
+                train_writer.flush()
 
             print(f'epoch #{epoch}/{epochs}',
                   f'loss: {loss:.3f}', '--',
