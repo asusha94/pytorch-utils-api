@@ -1,6 +1,7 @@
 
 
-def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_name=None, amp=None):
+def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss,
+                    extra_modules=None, symlink_name=None, amp=None):
     import os
     import numpy as np
     import random
@@ -23,6 +24,10 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_na
         loss=loss
     )
 
+    if extra_modules is not None:
+        for key, module in extra_modules:
+            checkpoint_dict[f'ext.{key}'] = module.state_dict()
+
     if amp is not None:
         checkpoint_dict['amp'] = amp.state_dict()
 
@@ -39,7 +44,7 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss, symlink_na
         os.symlink(checkpoint_name, symlink_path)
 
 
-def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False, amp=None):
+def load_checkpoint(checkpoint_path, *, model, optimizer=None, extra_modules=None, strict=False, amp=None):
     import os
     import numpy as np
     import random
@@ -60,6 +65,13 @@ def load_checkpoint(checkpoint_path, *, model, optimizer=None, strict=False, amp
     model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint_dict['optimizer'])
+
+    if extra_modules is not None:
+        for key, module in extra_modules:
+            state = checkpoint_dict.get(f'ext.{key}')
+            if strict and state is None:
+                raise KeyError(f'Cannot find `{key}` in the checkpoint')
+            module.load_state_dict(state)
 
     if amp is not None and 'amp' in checkpoint_dict:
         amp.load_state_dict(checkpoint_dict['amp'])
@@ -120,7 +132,7 @@ def train(*, epochs, model, optimizer, step_func,
           calc_metrics=None, summary_write=None,
           device=None, params_ops=None,
           epochs_per_summary=1, epochs_per_checkpoint=1,
-          amp=None, checkpoints_limit=None):
+          amp=None, checkpoints_limit=None, checkpoint_extra_modules=None):
     import os
     import time
     import torch
@@ -159,7 +171,8 @@ def train(*, epochs, model, optimizer, step_func,
     # load checkpoint
 
     if checkpoint_path is not None:
-        _state = load_checkpoint(checkpoint_path, model=model, optimizer=optimizer, amp=amp)
+        _state = load_checkpoint(checkpoint_path, model=model, optimizer=optimizer,
+                                 extra_modules=checkpoint_extra_modules, amp=amp)
         epoch_offset, loss = _state
     else:
         epoch_offset, loss = 0, -1
@@ -253,6 +266,7 @@ def train(*, epochs, model, optimizer, step_func,
                                 optimizer=optimizer,
                                 step=0,
                                 loss=loss,
+                                extra_modules=checkpoint_extra_modules,
                                 symlink_name='checkpoint_last.pth',
                                 amp=amp)
 
@@ -318,7 +332,9 @@ def train(*, epochs, model, optimizer, step_func,
                                 optimizer=optimizer,
                                 step=epoch,
                                 loss=loss,
-                                symlink_name='checkpoint_last.pth')
+                                extra_modules=checkpoint_extra_modules,
+                                symlink_name='checkpoint_last.pth',
+                                amp=amp)
 
             if valid_writer is not None and epoch % epochs_per_summary == 0:
                 # valid metrics

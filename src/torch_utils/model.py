@@ -1,4 +1,5 @@
 import collections
+import numpy as np
 import torch
 from contextlib import contextmanager
 
@@ -38,6 +39,8 @@ class _CalcMetricsWrapper:
                 return {k: normalize_item(v) for k, v in item.items()}
             elif isinstance(item, list):
                 return [normalize_item(v) for v in item]
+            elif isinstance(item, np.ndarray):
+                return item
             elif isinstance(item, torch.Tensor):
                 if len(torch.squeeze(item).shape):
                     return item.detach()
