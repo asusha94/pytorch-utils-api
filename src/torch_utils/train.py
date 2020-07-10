@@ -44,7 +44,8 @@ def save_checkpoint(checkpoint_path, *, model, optimizer, step, loss,
         os.symlink(checkpoint_name, symlink_path)
 
 
-def load_checkpoint(checkpoint_path, *, model, optimizer=None, extra_modules=None, strict=False, amp=None):
+def load_checkpoint(checkpoint_path, *, model=None, optimizer=None, extra_modules=None, strict=False, amp=None,
+                    load_rnd_state=True):
     import os
     import numpy as np
     import random
@@ -54,15 +55,18 @@ def load_checkpoint(checkpoint_path, *, model, optimizer=None, extra_modules=Non
 
     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
 
-    rng_state = checkpoint_dict['rng_state']
+    if load_rnd_state:
+        rng_state = checkpoint_dict['rng_state']
 
-    random.setstate(rng_state['python'])
-    np.random.set_state(rng_state['numpy'])
-    torch.set_rng_state(rng_state['torch'])
-    if torch.cuda.is_available() and 'torch_cuda' in rng_state:
-        torch.cuda.set_rng_state(rng_state['torch_cuda'])
+        random.setstate(rng_state['python'])
+        np.random.set_state(rng_state['numpy'])
+        torch.set_rng_state(rng_state['torch'])
+        if torch.cuda.is_available() and 'torch_cuda' in rng_state:
+            torch.cuda.set_rng_state(rng_state['torch_cuda'])
 
-    model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
+    if model is not None:
+        model.load_state_dict(checkpoint_dict['state_dict'], strict=strict)
+
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint_dict['optimizer'])
 
@@ -137,6 +141,7 @@ def train(*, epochs, model, optimizer, step_func,
     import time
     import torch
     import re
+    import shutil
     from torch.utils.tensorboard import SummaryWriter
 
     CHECKPOINT_PATTERN = r'^checkpoint_(\d+).pth$'
@@ -187,7 +192,6 @@ def train(*, epochs, model, optimizer, step_func,
     summary_dir = os.path.join(training_dir, 'summary')
 
     if checkpoint_path is None:  # starting from 0, so we can delete all checkpoints an summary
-        import shutil
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
         if os.path.exists(summary_dir):
@@ -203,6 +207,9 @@ def train(*, epochs, model, optimizer, step_func,
         checkpoints_history = ((int(m.groups()[0]), ckpt) for m, ckpt in checkpoints_history if m)
         checkpoints_history = sorted(checkpoints_history, key=lambda x: x[0])
         checkpoints_history = list(map(lambda x: x[1], checkpoints_history))
+
+    checkpoint_last_name = 'checkpoint_last.pth'
+    checkpoint_best_path = os.path.join(checkpoint_dir, 'checkpoint_best.pth')
 
     # meeting the limit
 
@@ -227,6 +234,12 @@ def train(*, epochs, model, optimizer, step_func,
 
     if checkpoint_path is not None:
         print(f'epoch #{epoch_offset}/{epochs}', f'loss: {loss:.3f}', flush=True)
+
+        if os.path.exists(checkpoint_best_path):
+            checkpoint_best_data = load_checkpoint(checkpoint_best_path, load_rnd_state=False)
+        else:
+            checkpoint_best_data = epoch_offset, loss
+            shutil.copy2(checkpoint_path, checkpoint_best_path)
     else:
         # TODO: place into checkpoints_limit training loop
         with model_utils.evaluating(model):
@@ -267,8 +280,11 @@ def train(*, epochs, model, optimizer, step_func,
                                 step=0,
                                 loss=loss,
                                 extra_modules=checkpoint_extra_modules,
-                                symlink_name='checkpoint_last.pth',
+                                symlink_name=checkpoint_last_name,
                                 amp=amp)
+
+                checkpoint_best_data = 0, loss
+                shutil.copy2(checkpoint_path, checkpoint_best_path)
 
     train_step = _TrainStep(step_func)
 
@@ -333,8 +349,12 @@ def train(*, epochs, model, optimizer, step_func,
                                 step=epoch,
                                 loss=loss,
                                 extra_modules=checkpoint_extra_modules,
-                                symlink_name='checkpoint_last.pth',
+                                symlink_name=checkpoint_last_name,
                                 amp=amp)
+
+                if checkpoint_best_data[1] >= loss:
+                    checkpoint_best_data = epoch, loss
+                    shutil.copy2(checkpoint_path, checkpoint_best_path)
 
             if valid_writer is not None and epoch % epochs_per_summary == 0:
                 # valid metrics
