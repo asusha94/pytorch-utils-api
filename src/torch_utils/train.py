@@ -369,6 +369,13 @@ def train(*, epochs, model, optimizer, step_func,
 
                 if checkpoint_best_data[1] >= loss:
                     checkpoint_best_data = epoch, loss
-                    shutil.copy2(checkpoint_path, checkpoint_best_path)
+                    save_checkpoint(checkpoint_best_path,
+                                    model=model,
+                                    optimizer=optimizer,
+                                    step=epoch,
+                                    loss=loss,
+                                    extra_modules=checkpoint_extra_modules,
+                                    symlink_name=None,
+                                    amp=amp)
     else:
         print('Training finished')
