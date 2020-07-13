@@ -352,7 +352,7 @@ def train(*, epochs, model, optimizer, step_func,
                                 symlink_name=checkpoint_last_name,
                                 amp=amp)
 
-                if checkpoint_best_data[1] >= loss:
+                if valid_writer is None and checkpoint_best_data[1] >= loss:
                     checkpoint_best_data = epoch, loss
                     shutil.copy2(checkpoint_path, checkpoint_best_path)
 
@@ -364,5 +364,11 @@ def train(*, epochs, model, optimizer, step_func,
                                                                ret_last_batch=True, device=device)
                 summary_write(valid_writer, model, optimizer, metrics, epoch, batch, result)
                 valid_writer.flush()
+
+                loss = metrics['loss']
+
+                if checkpoint_best_data[1] >= loss:
+                    checkpoint_best_data = epoch, loss
+                    shutil.copy2(checkpoint_path, checkpoint_best_path)
     else:
         print('Training finished')
