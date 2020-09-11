@@ -1,29 +1,63 @@
 
-def _metrics_ema(running_metrics, metrics, a=0.1, step=1):
-    for k, v in metrics.items():
-        if k not in running_metrics:
-            running_metrics[k] = (1 - a) * v
-        else:
-            running_metrics[k] = (1 - a) * v + a * running_metrics[k]
 
-        running_metrics[k] /= (1 - a**step)
+class MetricsAverageAbstract:
+    def apply(self, running_metrics, metrics, step):
+        raise NotImplementedError()
+
+    def __call__(self, running_metrics, metrics):
+        self._step += 1
+        self.apply(running_metrics, metrics, self._step)
+
+    def _do_init(self):
+        self._step = 0
 
 
-metrics_ema = _metrics_ema
+class MetricsEMA(MetricsAverageAbstract):
+    '''Exponential moving average'''
 
+    def __init__(self, alpha=0.1):
+        self._a = alpha
 
-def _metrics_accumulate(running_metrics, metrics, factor=1):
-    for k, v in metrics.items():
-        try:
+    def apply(self, running_metrics, metrics, step):
+        for k, v in metrics.items():
             if k not in running_metrics:
-                running_metrics[k] = factor * v
+                running_metrics[k] = (1 - self._a) * v
             else:
-                running_metrics[k] = running_metrics[k] + factor * v
-        except Exception as ex:
-            print('Metrics mergin error:', k, repr(ex))
+                running_metrics[k] = (1 - self._a) * v + self._a * running_metrics[k]
+
+            running_metrics[k] /= (1 - self._a**step)
 
 
-metrics_accumulate = _metrics_accumulate
+get_metrics_ema = MetricsEMA
+
+
+class MetricsCMA(MetricsAverageAbstract):
+    '''Cumulative moving average'''
+
+    def apply(self, running_metrics, metrics, step):
+        for k, v in metrics.items():
+            if k not in running_metrics:
+                running_metrics[k] = v / step  # assume that previous are zeros
+            else:
+                rv = running_metrics[k]
+                running_metrics[k] = rv + (v - rv) / step
+
+
+get_metrics_cma = MetricsCMA
+
+
+class MetricsSum(MetricsAverageAbstract):
+    '''Simple accumulation'''
+
+    def apply(self, running_metrics, metrics, step):
+        for k, v in metrics.items():
+            if k not in running_metrics:
+                running_metrics[k] = v
+            else:
+                running_metrics[k] = running_metrics[k] + v
+
+
+get_metrics_sum = MetricsSum
 
 
 def evaluate_batch(model, batch, *, step_func, calc_metrics, ret_result=False):
@@ -46,20 +80,8 @@ def evaluate_batch(model, batch, *, step_func, calc_metrics, ret_result=False):
         return metrics
 
 
-def _metrics_mean(running_metrics, steps):
-    def _get_mean(item):
-        if isinstance(item, list):
-            return [_get_mean(v) for v in item]
-        elif isinstance(item, tuple):
-            return tuple(_get_mean(v) for v in item)
-        else:
-            return item / steps
-
-    return {k: _get_mean(v) for k, v in running_metrics.items()}
-
-
 def evaluate(model, dataset, *, step_func, calc_metrics,
-             metrics_accumulate=None, metrics_average=None,
+             metrics_average=None, metrics_map=None,
              ret_last_batch=False, device=None):
     import torch
     from . import model as model_utils
@@ -70,11 +92,10 @@ def evaluate(model, dataset, *, step_func, calc_metrics,
     if not isinstance(calc_metrics, model_utils._CalcMetricsWrapper):
         calc_metrics = model_utils._CalcMetricsWrapper(calc_metrics)
 
-    if metrics_accumulate is None:
-        metrics_accumulate = _metrics_accumulate
-
     if metrics_average is None:
-        metrics_average = _metrics_mean
+        metrics_average = get_metrics_cma()
+
+    assert isinstance(metrics_average, MetricsAverageAbstract), 'Must derive `MetricsAverageAbstract`'
 
     if device is None:
         device = next(model.parameters()).device
@@ -85,6 +106,8 @@ def evaluate(model, dataset, *, step_func, calc_metrics,
         with torch.no_grad():
             i = 1
             running_metrics = dict()
+
+            metrics_average._do_init()
             for i, batch in enumerate(dataset, 1):
                 batch = [item.to(device) for item in batch]
 
@@ -93,9 +116,10 @@ def evaluate(model, dataset, *, step_func, calc_metrics,
                                                  calc_metrics=calc_metrics,
                                                  ret_result=True)
 
-                metrics_accumulate(running_metrics, metrics)
+                metrics_average(running_metrics, metrics)
             else:
-                running_metrics = metrics_average(running_metrics, i)
+                if metrics_map is not None:
+                    running_metrics = metrics_map(running_metrics, i)
 
                 if ret_last_batch:
                     return running_metrics, (batch, result)

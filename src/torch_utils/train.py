@@ -133,7 +133,9 @@ def default_calc_metrics(model, batch, result):
 def train(*, epochs, model, optimizer, step_func,
           train_dataset, val_dataset=None,
           training_dir=None, checkpoint_path=None,
-          calc_metrics=None, summary_write=None,
+          summary_write=None,
+          calc_metrics=None, metrics_average=None, metrics_map=None,
+          val_calc_metrics=None, val_metrics_average=None, val_metrics_map=None,
           device=None, params_ops=None,
           epochs_per_summary=1, epochs_per_checkpoint=1,
           amp=None, checkpoints_limit=None, checkpoint_extra_modules=None):
@@ -170,6 +172,24 @@ def train(*, epochs, model, optimizer, step_func,
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+    if val_calc_metrics is None:
+        val_calc_metrics = calc_metrics
+
+    if metrics_average is None:
+        metrics_average = eval_utils.get_metrics_ema()
+
+    if val_metrics_map is None:
+        val_metrics_map = metrics_map
+
+    assert isinstance(metrics_average, eval_utils.MetricsAverageAbstract), \
+        'Must derive `MetricsAverageAbstract`'
+
+    assert val_metrics_average is None or isinstance(val_metrics_average, eval_utils.MetricsAverageAbstract), \
+        'Must derive `MetricsAverageAbstract`'
+
+    if metrics_average is None:
+        pass
 
     model.to(device)
 
@@ -264,7 +284,7 @@ def train(*, epochs, model, optimizer, step_func,
 
                     metrics, result = eval_utils.evaluate_batch(model, batch,
                                                                 step_func=step_func,
-                                                                calc_metrics=calc_metrics,
+                                                                calc_metrics=val_calc_metrics,
                                                                 ret_result=True)
                     summary_write(valid_writer, model, optimizer, metrics, epoch_offset, batch, result)
                     valid_writer.flush()
@@ -296,6 +316,7 @@ def train(*, epochs, model, optimizer, step_func,
         epoch_timer_start = time.time()
 
         model.train()
+        metrics_average._do_init()
         for epoch_step, batch in enumerate(train_dataset, 1):
             batch = [item.to(device) for item in batch]
             # zero the parameter gradients
@@ -318,9 +339,12 @@ def train(*, epochs, model, optimizer, step_func,
 
             metrics = calc_metrics(model, batch, train_step.last_result)
 
-            eval_utils.metrics_ema(running_metrics, metrics, step=epoch_step)
+            metrics_average(running_metrics, metrics)
         else:
             epoch += 1  # due to the end of the epoch
+
+            if metrics_map is not None:
+                running_metrics = metrics_map(running_metrics, epoch_step)
 
             loss = running_metrics['loss']
 
@@ -360,7 +384,9 @@ def train(*, epochs, model, optimizer, step_func,
                 # valid metrics
                 metrics, (batch, result) = eval_utils.evaluate(model, val_dataset,
                                                                step_func=step_func,
-                                                               calc_metrics=calc_metrics,
+                                                               calc_metrics=val_calc_metrics,
+                                                               metrics_average=val_metrics_average,
+                                                               metrics_map=val_metrics_map,
                                                                ret_last_batch=True, device=device)
                 summary_write(valid_writer, model, optimizer, metrics, epoch, batch, result)
                 valid_writer.flush()
