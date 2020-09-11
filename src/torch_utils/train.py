@@ -272,6 +272,8 @@ def train(*, epochs, model, optimizer, step_func,
                                                             step_func=step_func,
                                                             calc_metrics=calc_metrics,
                                                             ret_result=True)
+                if metrics_map is not None:
+                    metrics = metrics_map(metrics, 1)
                 summary_write(train_writer, model, optimizer, metrics, epoch_offset, batch, result)
                 train_writer.flush()
 
@@ -286,6 +288,8 @@ def train(*, epochs, model, optimizer, step_func,
                                                                 step_func=step_func,
                                                                 calc_metrics=val_calc_metrics,
                                                                 ret_result=True)
+                    if val_metrics_map is not None:
+                        metrics = val_metrics_map(metrics, 1)
                     summary_write(valid_writer, model, optimizer, metrics, epoch_offset, batch, result)
                     valid_writer.flush()
 
